@@ -61,7 +61,8 @@ class OcatScraper(object):
         post = soup.find_all('tr', {'class': ['post odd', 'post even']})
 
         for p in post:
-            message = p.find('div', 'message').text
+
+            message = '\n \t'.join(p.find('div', 'message').stripped_strings)
             username = p.find('td', 'userdata').find('h4').find('a').string
             yield Post(username, message)
 
@@ -110,7 +111,7 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
         logging.debug('Reading :{}'.format(path))
         post_text = ''
         for p in self.ocatparser.get_posts(path):
-            post_text += '\n{0}:\n \t {1} \n'.format(p.author.strip(), p.message)
+            post_text += '\n{0}:\n {1} \n'.format(p.author.strip(), p.message)
 
         post_bytes = bytes(post_text, 'utf-8')
         return post_bytes[offset:offset + size]
