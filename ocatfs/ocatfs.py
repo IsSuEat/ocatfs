@@ -68,19 +68,18 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
 
     def getattr(self, path, fh=None):
         logging.debug("CURRENT PATH FOR GETATTR: {}".format(path))
-        if '.git' in path or 'HEAD' in path:
-            pass
+
         if path == '/':
             return dict(st_mode=(S_IFDIR | 0o755), st_nlink=2,
-                        st_size=0, st_ctime=time.time(), st_mtime=time.time(),
+                        st_ctime=time.time(), st_mtime=time.time(),
                         st_atime=time.time())
         elif path in self.subforums_urls:
             return dict(st_mode=(S_IFDIR | 0o755), st_nlink=2,
-                        st_size=0, st_ctime=time.time(), st_mtime=time.time(),
+                        st_ctime=time.time(), st_mtime=time.time(),
                         st_atime=time.time())
         else:
-            return dict(st_mode=(S_IFREG | 0o777), st_nlink=1,
-                        st_size=0, st_ctime=time.time(), st_mtime=time.time(),
+            return dict(st_mode=(S_IFREG | 0o444), st_nlink=1,
+                        st_size=4096, st_ctime=time.time(), st_mtime=time.time(),
                         st_atime=time.time())
 
     def readdir(self, path, fh):
@@ -99,8 +98,9 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
 
     def read(self, path, size, offset, fh):
         logging.debug('Reading :{}'.format(path))
-        posts = [e[0] for e in self.ocatparser.get_posts(path)]
-        return ''.join(posts).strip()
+        post_list = [e[0] for e in self.ocatparser.get_posts(path)]
+        post_bytes = bytes(''.join(post_list), 'utf-8')
+        return post_bytes[offset:offset + size]
         # no idea what i am doing lol
         # return posts[offset:offset + size]
 
@@ -108,6 +108,6 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         sys.exit(1)
-    print(sys.argv[1])
+
     logging.basicConfig(level=logging.DEBUG)
     fuse = fuse.FUSE(OcatFs(OcatParser()), sys.argv[1], foreground=True)
