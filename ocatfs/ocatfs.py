@@ -8,8 +8,19 @@ from bs4 import BeautifulSoup
 
 
 # TODO: handle more than one page for threads and posts
+class Thread(object):
+    def __init__(self, title, url):
+        self.url = url
+        self.title = title
 
-class OcatParser(object):
+
+class Post(object):
+    def __init__(self, author, message):
+        self.author = author
+        self.message = message
+
+
+class OcatScraper(object):
     BASE_URL = "https://overclockers.at"
 
     def __init__(self):
@@ -35,7 +46,7 @@ class OcatParser(object):
         threads_td = soup.find_all('td', 'title')
         for t in threads_td:
             threads = t.find('a')
-            yield (threads.get('href'), threads.get('title'))
+            yield Thread(threads.get('title'), threads.get('href'))
 
     def get_posts(self, thread_url):
 
@@ -47,11 +58,12 @@ class OcatParser(object):
         logging.info('Getting posts for thread: {}'.format(thread_url))
         thread_res = requests.get(self.BASE_URL + thread_url)
         soup = BeautifulSoup(thread_res.content, 'html.parser')
-        post = soup.find_all('tr', 'post even')
+        post = soup.find_all('tr', {'class': ['post odd', 'post even']})
+
         for p in post:
             message = p.find('div', 'message').text
             username = p.find('td', 'userdata').find('h4').find('a').string
-            yield ((message, username))
+            yield Post(username, message)
 
 
 class OcatFs(fuse.LoggingMixIn, fuse.Operations):
@@ -87,7 +99,7 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
         else:
             subforum = path.split('/')[1]
             # only the thread titles are relevant for the dir entries
-            self.thread_titles[subforum] = [e[0].split('/')[-1] for e in self.ocatparser.get_threads(subforum)]
+            self.thread_titles[subforum] = [e.url.split('/')[-1] for e in self.ocatparser.get_threads(subforum)]
             dirents.extend(self.thread_titles[subforum])
         logging.debug('Current dirents {} for path {}'.format(dirents, path))
         return dirents
@@ -98,7 +110,7 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
         logging.debug('Reading :{}'.format(path))
         post_text = ''
         for p in self.ocatparser.get_posts(path):
-            post_text += '\n{0}:\n \t {1} \n'.format(p[1].strip(), p[0])
+            post_text += '\n{0}:\n \t {1} \n'.format(p.author.strip(), p.message)
 
         post_bytes = bytes(post_text, 'utf-8')
         return post_bytes[offset:offset + size]
@@ -109,4 +121,4 @@ if __name__ == '__main__':
         sys.exit(1)
 
     logging.basicConfig(level=logging.INFO)
-    fuse = fuse.FUSE(OcatFs(OcatParser()), sys.argv[1], foreground=True)
+    fuse = fuse.FUSE(OcatFs(OcatScraper()), sys.argv[1], foreground=True)
