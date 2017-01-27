@@ -9,6 +9,7 @@ import fuse
 import requests
 from bs4 import BeautifulSoup
 import argparse
+import textwrap
 
 
 # TODO: handle more than one page for threads and posts
@@ -23,10 +24,15 @@ class Thread:
 
 
 class Post:
-    # TODO: add __repr__() so that read() doesnt have to do the formatting
     def __init__(self, author, message):
         self.author = author
         self.message = message
+
+    # TODO: better formatting
+    def __repr__(self):
+        # prefix all lines with a tab
+        msg = textwrap.indent(self.message, '\t')
+        return '\n{0}:\n\n{1:>20} \n'.format(self.author, msg)
 
 
 class OcatScraper:
@@ -38,9 +44,11 @@ class OcatScraper:
     def get_subforums(self):
         forum_res = requests.get(self.BASE_URL + "/forums")
         soup = BeautifulSoup(forum_res.content, 'html.parser')
-        subforums = soup.find_all('td', 'title')
-        for s in subforums:
-            links = s.find('a')
+
+        subforums_trs = soup.find_all('tr', 'forum level3')
+        for tr in subforums_trs:
+
+            links = tr.find('td', 'title').find('a')
             yield (links.get('href'), links.get('title'))
 
     def get_threads(self, subforum):
@@ -59,7 +67,7 @@ class OcatScraper:
         post = soup.find_all('tr', {'class': ['post odd', 'post even']})
 
         for p in post:
-            message = '\n \t'.join(p.find('div', 'message').stripped_strings)
+            message = '\n'.join(p.find('div', 'message').stripped_strings)
             username = p.find('td', 'userdata').find('h4').find('a').string
             yield Post(username, message)
 
@@ -69,8 +77,8 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
         # keys: subforums, values thread titles
         self.thread_titles = {}
         self.ocatparser = ocatparser
+        # relative urls
         self.subforums_urls = [e[0] for e in ocatparser.get_subforums()]
-        self.threads = {}
 
     def getattr(self, path, fh=None):
 
@@ -107,7 +115,7 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
         logging.debug('Reading :{}'.format(path))
         post_text = ''
         for p in self.ocatparser.get_posts(path):
-            post_text += '\n{0}:\n {1} \n'.format(p.author.strip(), p.message)
+            post_text += repr(p)
 
         post_bytes = bytes(post_text, 'utf-8')
         return post_bytes[offset:offset + size]
@@ -121,8 +129,7 @@ def _arg_parser():
     return parser.parse_args()
 
 
-if __name__ == '__main__':
-
+def run():
     args = _arg_parser()
 
     if not os.path.isdir(args.mountpoint):
@@ -132,4 +139,8 @@ if __name__ == '__main__':
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    fuse = fuse.FUSE(OcatFs(OcatScraper()), args.mountpoint, foreground=not args.background)
+    fuse.FUSE(OcatFs(OcatScraper()), args.mountpoint, foreground=not args.background)
+
+
+if __name__ == '__main__':
+    run()
