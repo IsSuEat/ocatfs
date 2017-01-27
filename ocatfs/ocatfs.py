@@ -1,26 +1,35 @@
+#! /usr/bin/env python3
+
 import logging
+import os
 import sys
 import time
 from stat import S_IFDIR, S_IFREG
 import fuse
 import requests
 from bs4 import BeautifulSoup
+import argparse
 
 
 # TODO: handle more than one page for threads and posts
-class Thread(object):
+# TODO: nicer folder names, maybe use parsed title
+# TODO: st_mtime according to last post date
+# TODO: maybe posting?
+
+class Thread:
     def __init__(self, title, url):
         self.url = url
         self.title = title
 
 
-class Post(object):
+class Post:
+    # TODO: add __repr__() so that read() doesnt have to do the formatting
     def __init__(self, author, message):
         self.author = author
         self.message = message
 
 
-class OcatScraper(object):
+class OcatScraper:
     BASE_URL = "https://overclockers.at"
 
     def __init__(self):
@@ -35,11 +44,6 @@ class OcatScraper(object):
             yield (links.get('href'), links.get('title'))
 
     def get_threads(self, subforum):
-        """
-        fetches threads in a subforum
-        :param subforum: string
-        :return: generator with threads in the subforum
-        """
         logging.info('Getting threads for subforum: {}'.format(subforum))
         subforum_res = requests.get(self.BASE_URL + '/' + subforum)
         soup = BeautifulSoup(subforum_res.content, 'html.parser')
@@ -49,19 +53,12 @@ class OcatScraper(object):
             yield Thread(threads.get('title'), threads.get('href'))
 
     def get_posts(self, thread_url):
-
-        """
-        fetches post in a thread
-        :param thread_url: relative path
-        :return: tuple with message and username
-        """
         logging.info('Getting posts for thread: {}'.format(thread_url))
         thread_res = requests.get(self.BASE_URL + thread_url)
         soup = BeautifulSoup(thread_res.content, 'html.parser')
         post = soup.find_all('tr', {'class': ['post odd', 'post even']})
 
         for p in post:
-
             message = '\n \t'.join(p.find('div', 'message').stripped_strings)
             username = p.find('td', 'userdata').find('h4').find('a').string
             yield Post(username, message)
@@ -95,8 +92,7 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
 
         if path == '/':
             # extend root entries to contain subforums. easiest to strip the slash off the path
-            dirents.extend(map((lambda x: x.strip('/)')), self.subforums_urls))
-
+            dirents.extend(map((lambda x: x.strip('/')), self.subforums_urls))
         else:
             subforum = path.split('/')[1]
             # only the thread titles are relevant for the dir entries
@@ -117,9 +113,23 @@ class OcatFs(fuse.LoggingMixIn, fuse.Operations):
         return post_bytes[offset:offset + size]
 
 
+def _arg_parser():
+    parser = argparse.ArgumentParser(description="oc.at as a filesystem in userspace")
+    parser.add_argument('mountpoint', help="Where to mount the fs to, required")
+    parser.add_argument('--background', default=False, action='store_true', help="Run fuse in the background")
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
+
+    args = _arg_parser()
+
+    if not os.path.isdir(args.mountpoint):
+        print('Mountpoint not available or not a directory')
         sys.exit(1)
 
-    logging.basicConfig(level=logging.INFO)
-    fuse = fuse.FUSE(OcatFs(OcatScraper()), sys.argv[1], foreground=True)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    fuse = fuse.FUSE(OcatFs(OcatScraper()), args.mountpoint, foreground=not args.background)
