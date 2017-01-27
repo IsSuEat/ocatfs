@@ -13,4 +13,4 @@ Depends on:
 
 Usage:
 
-`./ocatfs.py [-h] [--background] [--debug] mountpoint` 
+`./run.py [-h] [--background] [--debug] mountpoint` 
